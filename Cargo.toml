@@ -1,0 +1,10 @@
+[package]
+name = "rustcon"
+version = "0.1.0"
+
+[dependencies]
+clap = { version = "3.0.14", features = ["derive"] }
+array-bytes = { version = "1.5.1" }
+rpassword = { version = "5.0" }
+bytes = { version= "1.1.0", features = ["serde"] }
+queues = "1.0.2"

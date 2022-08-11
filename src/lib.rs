@@ -139,7 +139,6 @@ impl Packet {
             size: size,
             id: id,
             typ: typ,
-            //body_text: replace_color_chars(body_bytes.escape_ascii().to_string()),
             body_text: Packet::replace_color_codes(str::from_utf8(&body_bytes).unwrap().to_string()),
             body_bytes: body_bytes,
             pad: 0,
@@ -224,14 +223,23 @@ impl Rcon {
     }
 
     // Authenticate RCON session with password
-    pub fn authenticate(&mut self) -> PacketResult {
+    pub fn authenticate(&mut self) -> bool {
         let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
         let login = Packet::new(0, PacketType::Login, String::from(&pass)).unwrap_or_else(|error| {
             panic!("Could not create login Packet with password: '{:?}'", &pass);
         });
 
         println!("Authenticating...");
-        self.send_packet(login)
+        let resp = self.send_packet(login).unwrap();
+        match resp.id {
+            0..=i32::MAX if resp.id == self.last_sent_id => true,
+            -1 => false,
+            _ => {
+                eprintln!("Invalid message ID ({}) received from server!", resp.id);
+                eprintln!("Unable to authenticate!");
+                false
+            }
+        }
     }
 
     fn send_packet(&mut self, packet: Packet) -> PacketResult {
@@ -247,6 +255,7 @@ impl Rcon {
         self.conn.read(&mut buf).unwrap();
         let byte_buf = Bytes::copy_from_slice(&buf);
         //println!(">>> Received packet:");
+        //println!("Bytes: {:?}", byte_buf);
         //println!("First bytes: {:?}", byte_buf.get(0..20));
         let response = Packet::deserialize(byte_buf);
         return response;
@@ -260,11 +269,17 @@ impl Rcon {
 
     pub fn run(mut self) -> io::Result<()> {
         // Authenticate with RCON password
-        self.authenticate().unwrap();
+        loop {
+            let is_authenticated = self.authenticate();
+            if is_authenticated { break };
+            println!("Incorrect password. Please try again...");
+        }
+
         
         // Send test "help" command
         let help = self.send_cmd("help").unwrap();
         println!("{}", help);
+        println!("{}", "====".repeat(22));
 
         // Interactive prompt
         let stdin = io::stdin();
@@ -274,7 +289,9 @@ impl Rcon {
             io::stdout().flush()?;
             stdin.read_line(&mut line)?;
             if line.len() > MAX_PACKET_SIZE - 9 {
-                panic!("Woah there! That command is waaay too long.")
+                println!("Woah there! That command is waaay too long.");
+                println!("You might want to try that again.");
+                continue
             }
 
             let response = self.send_cmd(&line.trim_end());

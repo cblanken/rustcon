@@ -40,14 +40,16 @@ impl fmt::Display for PacketType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             PacketType::Login => write!(f, "Login"),
-            PacketType::Command => write!(f, "Command"),
-            PacketType::Response => write!(f, "Response"),
+            PacketType::Command => write!(f, "Command/Auth Response"),
+            PacketType::Response => write!(f, "Response Data"),
             _ => write!(f, "UNKNOWN"),
         }
     }
 }
 
 const MAX_PACKET_SIZE: usize = 4096;
+
+/// RCON packet struct
 pub struct Packet {
     /// Length of remainder of packet, max of 4096 for a single packet
     size: i32,
@@ -75,7 +77,7 @@ pub enum PacketError {
     NonAscii,
 }
 
-pub type PacketResult = Result<Packet, PacketError>;
+type PacketResult = Result<Packet, PacketError>;
 
 impl Packet {
     /// Initialize a packet instance with calculated length and included pad byte
@@ -163,6 +165,84 @@ pub fn send_packet(packet: &Packet, mut stream: &TcpStream) -> io::Result<()> {
     Ok(())
 }
 
+/// RCON connection struct for handling sending and receiving RCON packets
+pub struct Rcon {
+    /// TcpStream for reading and writing to RCON server
+    conn: TcpStream,
+
+    /// Last message ID sent to server
+    last_sent_id: i32,
+
+    /// Last message ID received from server
+    last_received_id: i32,
+}
+
+/// RCON possible error states
+#[derive(Debug)]
+pub enum RconError {
+    PacketError,
+    AuthError,
+    ConnError,
+}
+
+pub type RconResult = Result<Rcon, RconError>;
+
+impl Rcon {
+    fn new(ip: &str, port: &str) -> RconResult {
+        println!("Connecting to server...");
+        let conn = Rcon::get_conn(ip, port);
+        println!("Connected to [{}:{}]", ip, port);
+        let rcon = Rcon {
+            conn: conn,
+            last_sent_id: 0,
+            last_received_id: 0,
+        };
+
+        Ok(rcon)
+    }
+
+    pub fn get_conn(ip: &str, port: &str) -> TcpStream {
+        let conn = TcpStream::connect(format!("{}:{}", ip, port)).expect("Couldn't connect to server at {ip}:{port}");
+        conn.set_nonblocking(false).expect("set_nonblocking call failed");
+        conn.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout call failed");
+        conn.set_write_timeout(Some(Duration::new(1, 0))).expect("set_write_timeout call failed");
+        conn
+    }
+
+    pub fn authenticate(&mut self, password: &str) -> PacketResult {
+        let login = Packet::new(0, PacketType::Login, String::from(password)).unwrap_or_else(|error| {
+            panic!("Could not create login Packet from password: '{:?}'", password);
+        });
+
+        println!("Authenticating...");
+        self.send_packet(login)
+    }
+
+    fn send_packet(&mut self, packet: Packet) -> PacketResult {
+        let mut packet_bytes = packet.serialize();
+        
+        // Send packet
+        println!("<<< Sending packet: {}", packet);
+        println!("Bytes: {:#x}", packet_bytes);
+        self.conn.write(packet_bytes.as_mut()).expect("Cannot write data to stream.");
+        let mut buf = [0; MAX_PACKET_SIZE];
+        
+        // Get response from server
+        self.conn.read(&mut buf).unwrap();
+        let byte_buf = Bytes::copy_from_slice(&buf);
+        println!(">>> Received packet:");
+        println!("First bytes: {:?}", byte_buf.get(0..20));
+        let response = Packet::deserialize(byte_buf);
+        return response;
+    }
+
+    /// API function to send RCON commands and receive packets
+    pub fn send_cmd(&mut self, body: &str) -> PacketResult {
+        let packet = Packet::new(0, PacketType::Command, body.to_string()).unwrap();
+        self.send_packet(packet)
+    }
+}
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -181,56 +261,10 @@ fn main() -> io::Result<()> {
 
     let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
 
-    let mut stream = TcpStream::connect(format!("{}:{}", args.host, args.port))
-                               .expect("Couldn't connect to server at {args.host}:{args.port}");
-    stream.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout call failed");
-    stream.set_write_timeout(Some(Duration::new(1, 0))).expect("sed_write_timeout call failed");
-    stream.set_nonblocking(false).expect("set_nonblocking call failed");
-
-    println!("Connected to [{}:{}]", args.host, args.port);
-    println!("Authenticating...");
-
-    
-    // Setup auth sequence
-    let mut send_queue = Vec::<&Packet>::new();
-    let login = Packet::new(0, PacketType::Login, pass).unwrap();
-    let cmd = Packet::new(1, PacketType::Command, String::from("help")).unwrap();
-
-    send_queue.push(&login);
-    send_queue.push(&cmd);
-    
-    // Send loop
-    while send_queue.len() > 0 {
-        // Sending packets
-        let p = send_queue.remove(0);
-        send_packet(p, &stream)?;
-
-        //sleep(Duration::from_millis(1000));
-
-        // Monitor stream sent data size
-        //let mut size_buf = [0; 4];
-        //let mut packet_size = 0;
-        //let count = 0;
-        //loop {
-        //    stream.read_exact(&mut size_buf)?;
-        //    packet_size = Bytes::copy_from_slice(&size_buf).get_i32_le();
-        //    if packet_size > 0 { break; }
-
-        //    if count % 50 == 0 { println!("{}: next read...", count) };
-        //    count += 50;
-        //}
-        
-        // Receive reponses
-        let mut buf = [0; MAX_PACKET_SIZE];
-        stream.read(&mut buf)?;
-        //stream.read(byte_buf)?;
-        let byte_buf = Bytes::copy_from_slice(&buf);
-        println!(">>> Received packet:");
-        println!("First bytes: {:?}", byte_buf.get(0..20));
-        let response = Packet::deserialize(byte_buf).unwrap();
-        println!("{}", response);
-    }
-
-    //sleep(Duration::from_secs(3));
+    let mut rcon = Rcon::new(&args.host, &args.port).unwrap();
+    let auth = rcon.authenticate(&pass).unwrap();
+    println!("{}", auth);
+    let help = rcon.send_cmd("help").unwrap();
+    println!("{}", help);
     Ok(())
 }

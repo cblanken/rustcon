@@ -1,8 +1,13 @@
 /*
  * An interactive RCON shell.
  */
+
 extern crate bytes;
+extern crate clap;
+extern crate rpassword;
+
 use bytes::{Bytes, BytesMut, Buf, BufMut};
+use clap::{Parser};
 use std::{
     io::{self, Write, Read},
     fmt,
@@ -10,6 +15,18 @@ use std::{
     str,
     time::{Duration},
 };
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+pub struct Args {
+    /// RCON server IPv4 address
+    #[clap(short, long, default_value = "127.0.0.1")]
+    pub ip: String,
+
+    /// RCON server PORT number
+    #[clap(short, long, default_value = "27015")]
+    pub port: String,
+}
 
 #[derive(Clone)]
 pub enum PacketType {
@@ -161,6 +178,9 @@ pub fn send_packet(packet: &Packet, mut stream: &TcpStream) -> io::Result<()> {
 
 /// RCON connection struct for handling sending and receiving RCON packets
 pub struct Rcon {
+    // Command line arguments
+    args: Args,
+
     /// TcpStream for reading and writing to RCON server
     conn: TcpStream,
 
@@ -182,11 +202,10 @@ pub enum RconError {
 pub type RconResult = Result<Rcon, RconError>;
 
 impl Rcon {
-    pub fn new(ip: &str, port: &str) -> RconResult {
-        println!("Connecting to server...");
-        let conn = Rcon::get_conn(ip, port);
-        println!("Connected to [{}:{}]", ip, port);
+    pub fn new(args: Args) -> RconResult {
+        let conn = Rcon::get_conn(&args.ip, &args.port);
         let rcon = Rcon {
+            args: args,
             conn: conn,
             last_sent_id: 0,
             last_received_id: 0,
@@ -203,9 +222,11 @@ impl Rcon {
         conn
     }
 
-    pub fn authenticate(&mut self, password: &str) -> PacketResult {
-        let login = Packet::new(0, PacketType::Login, String::from(password)).unwrap_or_else(|error| {
-            panic!("Could not create login Packet from password: '{:?}'", password);
+    // Authenticate RCON session with password
+    pub fn authenticate(&mut self) -> PacketResult {
+        let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
+        let login = Packet::new(0, PacketType::Login, String::from(&pass)).unwrap_or_else(|error| {
+            panic!("Could not create login Packet with password: '{:?}'", &pass);
         });
 
         println!("Authenticating...");
@@ -234,5 +255,17 @@ impl Rcon {
     pub fn send_cmd(&mut self, body: &str) -> PacketResult {
         let packet = Packet::new(0, PacketType::Command, body.to_string()).unwrap();
         self.send_packet(packet)
+    }
+
+    pub fn run(mut self) {
+        // Authenticate with RCON password
+        let auth = self.authenticate().unwrap();
+        println!("{}", auth);
+        
+        // Send test "help" command
+        let help = self.send_cmd("help").unwrap();
+        println!("{}", help);
+
+        // TODO setup interactive shell
     }
 }

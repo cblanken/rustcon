@@ -16,6 +16,7 @@ use std::{
     time::{Duration},
 };
 
+// TODO: add verbose parameter
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
@@ -163,7 +164,7 @@ impl Packet {
 
 impl fmt::Display for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Size: {}, ID: {}, Type: {}\nBody: {}", self.size, self.id, self.typ, self.body_text)
+        write!(f, "Size: {} bytes, ID: {}, Type: {}\n{}", self.size, self.id, self.typ, self.body_text)
     }
 }
 
@@ -237,16 +238,16 @@ impl Rcon {
         let mut packet_bytes = packet.serialize();
         
         // Send packet
-        println!("<<< Sending packet: {}", packet);
-        println!("Bytes: {:#x}", packet_bytes);
+        //println!("<<< Sending packet: {}", packet);
+        //println!("Bytes: {:#x}", packet_bytes);
         self.conn.write(packet_bytes.as_mut()).expect("Cannot write data to stream.");
         let mut buf = [0; MAX_PACKET_SIZE];
         
         // Get response from server
         self.conn.read(&mut buf).unwrap();
         let byte_buf = Bytes::copy_from_slice(&buf);
-        println!(">>> Received packet:");
-        println!("First bytes: {:?}", byte_buf.get(0..20));
+        //println!(">>> Received packet:");
+        //println!("First bytes: {:?}", byte_buf.get(0..20));
         let response = Packet::deserialize(byte_buf);
         return response;
     }
@@ -257,15 +258,28 @@ impl Rcon {
         self.send_packet(packet)
     }
 
-    pub fn run(mut self) {
+    pub fn run(mut self) -> io::Result<()> {
         // Authenticate with RCON password
-        let auth = self.authenticate().unwrap();
-        println!("{}", auth);
+        self.authenticate().unwrap();
         
         // Send test "help" command
         let help = self.send_cmd("help").unwrap();
         println!("{}", help);
 
-        // TODO setup interactive shell
+        // Interactive prompt
+        let stdin = io::stdin();
+        loop {
+            let mut line = String::new();
+            print!("λ ");
+            io::stdout().flush()?;
+            stdin.read_line(&mut line)?;
+            if line.len() > MAX_PACKET_SIZE - 9 {
+                panic!("Woah there! That command is waaay too long.")
+            }
+
+            let response = self.send_cmd(&line.trim_end());
+            println!("{}", response.unwrap());
+            println!("{}", "====".repeat(22));
+        }
     }
 }

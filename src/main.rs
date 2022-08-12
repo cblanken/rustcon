@@ -11,7 +11,7 @@ fn main() -> io::Result<()> {
 
     // Establish connection to RCON server
     let rcon = Rcon::new(args).unwrap();
-    rcon.run();
+    rcon.run()?;
 
     Ok(())
 }

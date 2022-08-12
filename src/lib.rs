@@ -14,6 +14,7 @@ use std::{
     net::{TcpStream},
     str,
     time::{Duration},
+    thread::{sleep},
 };
 
 // TODO: add verbose parameter
@@ -167,15 +168,6 @@ impl fmt::Display for Packet {
     }
 }
 
-pub fn send_packet(packet: &Packet, mut stream: &TcpStream) -> io::Result<()> {
-    let mut packet_bytes = packet.serialize();
-    println!("<<< Sending packet: {}", packet);
-    //println!("Bytes: {:#x}", packet_bytes);
-    stream.write(packet_bytes.as_mut()).expect("Cannot write data to stream.");
-    //stream.flush()?;
-    Ok(())
-}
-
 /// RCON connection struct for handling sending and receiving RCON packets
 pub struct Rcon {
     // Command line arguments
@@ -225,67 +217,82 @@ impl Rcon {
     // Authenticate RCON session with password
     pub fn authenticate(&mut self) -> bool {
         let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
-        let login = Packet::new(0, PacketType::Login, String::from(&pass)).unwrap_or_else(|error| {
+        let login = Packet::new(7816, PacketType::Login, String::from(&pass)).unwrap_or_else(|error| {
             panic!("Could not create login Packet with password: '{:?}'", &pass);
         });
 
         println!("Authenticating...");
-        let resp = self.send_packet(login).unwrap();
-        match resp.id {
-            0..=i32::MAX if resp.id == self.last_sent_id => true,
-            -1 => false,
-            _ => {
-                eprintln!("Invalid message ID ({}) received from server!", resp.id);
-                eprintln!("Unable to authenticate!");
-                false
+        self.send_packet(login);
+        let auth_response = self.receive_packets();
+        //println!(">>> Received AUTH response:");
+        for p in &auth_response {
+            if p.id == -1 || p.id != self.last_sent_id {
+                return false;
             }
         }
+        true
     }
 
-    fn send_packet(&mut self, packet: Packet) -> PacketResult {
+    fn send_packet(&mut self, packet: Packet) {
         let mut packet_bytes = packet.serialize();
         
         // Send packet
         //println!("<<< Sending packet: {}", packet);
         //println!("Bytes: {:#x}", packet_bytes);
         self.conn.write(packet_bytes.as_mut()).expect("Cannot write data to stream.");
+        self.last_sent_id = packet.id;
+    }
+
+    fn receive_packets(&mut self) -> Vec::<Packet> {
+        let mut packets: Vec::<Packet> = Vec::new();
         let mut buf = [0; MAX_PACKET_SIZE];
-        
-        // Get response from server
-        self.conn.read(&mut buf).unwrap();
-        let byte_buf = Bytes::copy_from_slice(&buf);
-        //println!(">>> Received packet:");
-        //println!("Bytes: {:?}", byte_buf);
-        //println!("First bytes: {:?}", byte_buf.get(0..20));
-        let response = Packet::deserialize(byte_buf);
-        return response;
+
+        // Read all available packets
+        //loop {
+        while let Ok(_) = self.conn.read(&mut buf) {
+            let byte_buf = Bytes::copy_from_slice(&buf);
+            //println!(">>> Received packet:");
+            //println!("Bytes: {:?}", byte_buf);
+            //println!("First bytes: {:?}", byte_buf.get(0..20));
+            let response = Packet::deserialize(byte_buf).unwrap();
+            if response.body_bytes.len() == 0 || response.id == -1 {
+                packets.push(response);
+                break;
+            } else {
+                packets.push(response);
+            }
+        }
+
+        packets
     }
 
     /// API function to send RCON commands and receive packets
-    pub fn send_cmd(&mut self, body: &str) -> PacketResult {
-        let packet = Packet::new(0, PacketType::Command, body.to_string()).unwrap();
-        self.send_packet(packet)
+    pub fn send_cmd(&mut self, body: &str) -> Vec::<Packet> {
+        let packet = Packet::new(self.last_sent_id + 1, PacketType::Command, body.to_string()).unwrap();
+        
+        // Send command packet
+        self.send_packet(packet);
+
+        self.receive_packets()
+        
+        // TODO (might be SRCDS specific)
+        // Send follow-up SERVERDATA_RESPONSE_VALUE packet 
+        // This causes the server the server to respond with an empty packet body
+        // when all the response packets have been received for a given command
     }
 
     pub fn run(mut self) -> io::Result<()> {
         // Authenticate with RCON password
-        loop {
-            let is_authenticated = self.authenticate();
-            if is_authenticated { break };
+        while !self.authenticate() {
             println!("Incorrect password. Please try again...");
         }
 
-        
-        // Send test "help" command
-        let help = self.send_cmd("help").unwrap();
-        println!("{}", help);
-        println!("{}", "====".repeat(22));
-
         // Interactive prompt
+        println!("{}", "====".repeat(20));
         let stdin = io::stdin();
         loop {
             let mut line = String::new();
-            print!("λ ");
+            print!("λ: ");
             io::stdout().flush()?;
             stdin.read_line(&mut line)?;
             if line.len() > MAX_PACKET_SIZE - 9 {
@@ -295,8 +302,10 @@ impl Rcon {
             }
 
             let response = self.send_cmd(&line.trim_end());
-            println!("{}", response.unwrap());
-            println!("{}", "====".repeat(22));
+            for p in response {
+                println!("{}", p);
+            }
+            println!("{}", "====".repeat(20));
         }
     }
 }

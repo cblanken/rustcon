@@ -9,12 +9,12 @@ extern crate rpassword;
 use bytes::{Bytes, BytesMut, Buf, BufMut};
 use clap::{Parser};
 use std::{
-    io::{self, Write, Read},
+    io::{stdin, stdout, Read, Write, Result as ioResult},
+    //io::{prelude::*, Write, Read},
     fmt,
     net::{TcpStream},
     str,
     time::{Duration},
-    thread::{sleep},
 };
 
 // TODO: add verbose parameter
@@ -61,6 +61,7 @@ impl fmt::Display for PacketType {
 }
 
 const MAX_PACKET_SIZE: usize = 4096;
+const MAX_PACKET_BODY_SIZE: usize = MAX_PACKET_SIZE - 12;
 
 /// RCON packet struct
 pub struct Packet {
@@ -85,8 +86,7 @@ pub struct Packet {
 
 #[derive(Debug)]
 pub enum PacketError {
-    InvalidSize,
-    LargePacket,
+    SmallPacket,
     NonAscii,
 }
 
@@ -98,8 +98,6 @@ impl Packet {
         let body_bytes = Bytes::from(body_text.clone());
         if !body_bytes.is_ascii() {
             Err(PacketError::NonAscii)
-        } else if body_bytes.len() + 10 > MAX_PACKET_SIZE { // packets larger then 4096 bytes should be split
-            Err(PacketError::LargePacket)
         } else {
             let packet = Packet {
                 size: body_bytes.len() as i32 + 10,
@@ -125,22 +123,32 @@ impl Packet {
 
     fn deserialize(mut bytes: Bytes) -> PacketResult {
         let size = bytes.get_i32_le();
-        if size < 10 || size > MAX_PACKET_SIZE as i32 {
-            Err(PacketError::InvalidSize)?
-        }
+        println!("pack size: {}", size);
         let id = bytes.get_i32_le();
         let typ = PacketType::from(bytes.get_i32_le());
-        let body_bytes = bytes.copy_to_bytes(size as usize - 9);
+        
+        // Copy out bytes from body up to max possible packet size
+        let body_size = match size as usize {
+            0..=9 => Err(PacketError::SmallPacket)?,
+            10..=MAX_PACKET_SIZE => size as usize - 9,
+            _ => MAX_PACKET_BODY_SIZE,
+        };
 
-        if body_bytes.len() + 10 > MAX_PACKET_SIZE { // packets larger then 4096 bytes should be split
-            Err(PacketError::LargePacket)?
-        }
+        let body_bytes = bytes.copy_to_bytes(body_size);
 
         let packet = Packet {
             size: size,
             id: id,
             typ: typ,
-            body_text: Packet::replace_color_codes(str::from_utf8(&body_bytes).unwrap().to_string()),
+            body_text: {
+                Packet::replace_color_codes(str::from_utf8(&body_bytes)
+                    .unwrap_or_else(|_body| {
+                        eprintln!("Could not parse the body bytes as UTF-8");
+                        eprintln!("Here are the raw bytes:\n{:#?}", body_bytes);
+                        ""
+                    })
+                    .to_string())
+            },
             body_bytes: body_bytes,
             pad: 0,
         };
@@ -178,9 +186,6 @@ pub struct Rcon {
 
     /// Last message ID sent to server
     last_sent_id: i32,
-
-    /// Last message ID received from server
-    last_received_id: i32,
 }
 
 /// RCON possible error states
@@ -200,7 +205,6 @@ impl Rcon {
             args: args,
             conn: conn,
             last_sent_id: 0,
-            last_received_id: 0,
         };
 
         Ok(rcon)
@@ -246,14 +250,25 @@ impl Rcon {
     fn receive_packets(&mut self) -> Vec::<Packet> {
         let mut packets: Vec::<Packet> = Vec::new();
         let mut buf = [0; MAX_PACKET_SIZE];
+       
+        // TODO try refactoring with TcpStream.read_to_end()
+        // An error shows up when running long commands that return 3+ packets
+        // which give me weird reads (not filling out buffer or reading too far)
+        // Pretty sure it's because the TcpStream.read() is completing reads NOT
+        // on packet divisions and the "next packet" get's a bad length value when
+        // it gets deserialized
+       
+        //let mut vec_buf: Vec::<u8> = Vec::new();
+        //self.conn.read_to_end(&mut vec_buf).unwrap();
+        //let new_buf = Bytes::copy_from_slice(&vec_buf);
+
 
         // Read all available packets
-        //loop {
         while let Ok(_) = self.conn.read(&mut buf) {
             let byte_buf = Bytes::copy_from_slice(&buf);
-            //println!(">>> Received packet:");
+            println!(">>> Received packet:");
             //println!("Bytes: {:?}", byte_buf);
-            //println!("First bytes: {:?}", byte_buf.get(0..20));
+            println!("First bytes: {:?}", byte_buf.get(0..20));
             let response = Packet::deserialize(byte_buf).unwrap();
             if response.body_bytes.len() == 0 || response.id == -1 {
                 packets.push(response);
@@ -269,10 +284,7 @@ impl Rcon {
     /// API function to send RCON commands and receive packets
     pub fn send_cmd(&mut self, body: &str) -> Vec::<Packet> {
         let packet = Packet::new(self.last_sent_id + 1, PacketType::Command, body.to_string()).unwrap();
-        
-        // Send command packet
         self.send_packet(packet);
-
         self.receive_packets()
         
         // TODO (might be SRCDS specific)
@@ -281,7 +293,7 @@ impl Rcon {
         // when all the response packets have been received for a given command
     }
 
-    pub fn run(mut self) -> io::Result<()> {
+    pub fn run(mut self) -> ioResult<()> {
         // Authenticate with RCON password
         while !self.authenticate() {
             println!("Incorrect password. Please try again...");
@@ -289,11 +301,11 @@ impl Rcon {
 
         // Interactive prompt
         println!("{}", "====".repeat(20));
-        let stdin = io::stdin();
+        let stdin = stdin();
         loop {
             let mut line = String::new();
             print!("λ: ");
-            io::stdout().flush()?;
+            stdout().flush()?;
             stdin.read_line(&mut line)?;
             if line.len() > MAX_PACKET_SIZE - 9 {
                 println!("Woah there! That command is waaay too long.");

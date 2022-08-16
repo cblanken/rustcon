@@ -10,7 +10,6 @@ use bytes::{Bytes, BytesMut, Buf, BufMut};
 use clap::{Parser};
 use std::{
     io::{stdin, stdout, Read, Write, Result as ioResult},
-    //io::{prelude::*, Write, Read},
     fmt,
     net::{TcpStream},
     str,
@@ -221,20 +220,22 @@ impl Rcon {
     // Authenticate RCON session with password
     pub fn authenticate(&mut self) -> bool {
         let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
-        let login = Packet::new(7816, PacketType::Login, String::from(&pass)).unwrap_or_else(|error| {
-            panic!("Could not create login Packet with password: '{:?}'", &pass);
-        });
-
-        println!("Authenticating...");
-        self.send_packet(login);
-        let auth_response = self.receive_packets();
-        //println!(">>> Received AUTH response:");
-        for p in &auth_response {
-            if p.id == -1 || p.id != self.last_sent_id {
-                return false;
+        let login = Packet::new(7816, PacketType::Login, String::from(&pass));
+        if let Ok(packet) = login {
+            println!("Authenticating...");
+            self.send_packet(packet);
+            let auth_response = self.receive_packets();
+            //println!(">>> Received AUTH response:");
+            for p in &auth_response {
+                if p.id == -1 || p.id != self.last_sent_id {
+                    return false;
+                }
             }
+            true
+        } else {
+            eprintln!("Could not create login Packet with password: '{:?}'", &pass);
+            return false
         }
-        true
     }
 
     fn send_packet(&mut self, packet: Packet) {

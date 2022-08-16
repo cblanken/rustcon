@@ -1,6 +1,6 @@
-use clap::{Parser};
+use clap::Parser;
 use rustcon::{Rcon, Args};
-use std::{io};
+use std::io;
 
 fn main() -> io::Result<()> {
     let args = Args::parse();

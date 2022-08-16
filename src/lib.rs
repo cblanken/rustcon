@@ -4,13 +4,13 @@
 
 #![feature(iter_advance_by)]
 use bytes::{Bytes, BytesMut, Buf, BufMut};
-use clap::{Parser};
+use clap::Parser;
 use std::{
     io::{stdin, stdout, Read, Write, Result as ioResult},
     fmt,
-    net::{TcpStream},
+    net::TcpStream,
     str,
-    time::{Duration},
+    time::Duration,
 };
 
 // TODO: add verbose parameter
@@ -202,8 +202,8 @@ impl Rcon {
     pub fn new(args: Args) -> RconResult {
         let conn = Rcon::get_conn(&args.ip, &args.port);
         let rcon = Rcon {
-            args: args,
-            conn: conn,
+            args,
+            conn,
             last_sent_id: 0,
         };
 

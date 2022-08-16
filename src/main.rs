@@ -7,7 +7,8 @@ fn main() -> io::Result<()> {
     println!("Connecting to host at {}:{} ...", args.ip, args.port);
 
     // Establish connection to RCON server
-    let rcon = Rcon::new(args).unwrap();
+    let rcon = Rcon::new(&args)
+        .expect(format!("Unable to create an RCON session with {}:{}", args.ip, args.port).as_str());
     rcon.run()?;
 
     Ok(())

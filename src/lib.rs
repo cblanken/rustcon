@@ -118,12 +118,13 @@ impl Packet {
                 filtered_s.push(x);
             }
         }
+        return s;
         filtered_s
     }
 
     fn deserialize(mut bytes: Bytes) -> PacketResult {
         let size = bytes.get_i32_le();
-        println!("pack size: {}", size);
+        //println!("packet size: {}", size);
         let id = bytes.get_i32_le();
         let typ = PacketType::from(bytes.get_i32_le());
         
@@ -178,9 +179,6 @@ impl fmt::Display for Packet {
 
 /// RCON connection struct for handling sending and receiving RCON packets
 pub struct Rcon {
-    // Command line arguments
-    args: Args,
-
     /// TcpStream for reading and writing to RCON server
     conn: TcpStream,
 
@@ -199,10 +197,9 @@ pub enum RconError {
 pub type RconResult = Result<Rcon, RconError>;
 
 impl Rcon {
-    pub fn new(args: Args) -> RconResult {
+    pub fn new(args: &Args) -> RconResult {
         let conn = Rcon::get_conn(&args.ip, &args.port);
         let rcon = Rcon {
-            args,
             conn,
             last_sent_id: 0,
         };
@@ -221,7 +218,7 @@ impl Rcon {
     // Authenticate RCON session with password
     pub fn authenticate(&mut self) -> bool {
         let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
-        let login = Packet::new(7816, PacketType::Login, String::from(&pass));
+        let login = Packet::new(1, PacketType::Login, String::from(&pass));
         if let Ok(packet) = login {
             println!("Authenticating...");
             self.send_packet(packet);
@@ -264,13 +261,12 @@ impl Rcon {
         //self.conn.read_to_end(&mut vec_buf).unwrap();
         //let new_buf = Bytes::copy_from_slice(&vec_buf);
 
-
         // Read all available packets
         while let Ok(_) = self.conn.read(&mut buf) {
             let byte_buf = Bytes::copy_from_slice(&buf);
-            println!(">>> Received packet:");
+            //println!(">>> Received packet:");
             //println!("Bytes: {:?}", byte_buf);
-            println!("First bytes: {:?}", byte_buf.get(0..20));
+            //println!("First bytes: {:?}", byte_buf.get(0..20));
             let response = Packet::deserialize(byte_buf).unwrap();
             if response.body_bytes.len() == 0 || response.id == -1 {
                 packets.push(response);
@@ -302,7 +298,7 @@ impl Rcon {
         }
 
         // Interactive prompt
-        println!("{}", "====".repeat(20));
+        println!("{}", "=".repeat(80));
         let stdin = stdin();
         loop {
             let mut line = String::new();
@@ -310,8 +306,8 @@ impl Rcon {
             stdout().flush()?;
             stdin.read_line(&mut line)?;
             if line.len() > MAX_PACKET_SIZE - 9 {
-                println!("Woah there! That command is waaay too long.");
-                println!("You might want to try that again.");
+                eprintln!("Woah there! That command is waaay too long.");
+                eprintln!("You might want to try that again.");
                 continue
             }
 
@@ -319,7 +315,7 @@ impl Rcon {
             for p in response {
                 println!("{}", p);
             }
-            println!("{}", "====".repeat(20));
+            println!("{}", "=".repeat(80));
         }
     }
 }

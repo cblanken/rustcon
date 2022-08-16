@@ -2,7 +2,6 @@
  * An interactive RCON shell.
  */
 
-#![feature(iter_advance_by)]
 use bytes::{Bytes, BytesMut, Buf, BufMut};
 use clap::Parser;
 use std::{
@@ -111,11 +110,11 @@ impl Packet {
     fn replace_color_codes(s: String) -> String {
         let mut filtered_s = String::new();
         let mut iter = s.chars();
-        while let Some(x) = iter.next() {
-            if x == '§' {
-                iter.advance_by(1).unwrap();
+        while let Some(ch) = iter.next() {
+            if ch == '§' {
+                iter.next();
             } else {
-                filtered_s.push(x);
+                filtered_s.push(ch);
             }
         }
         filtered_s

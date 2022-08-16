@@ -2,6 +2,7 @@
  * An interactive RCON shell.
  */
 
+#![feature(iter_advance_by)]
 extern crate bytes;
 extern crate clap;
 extern crate rpassword;
@@ -112,12 +113,16 @@ impl Packet {
     }
 
     fn replace_color_codes(s: String) -> String {
-        // Replace any color codes and non-ascii chars
-        s
-            .replace("§6", "")
-            .replace("§7", "")
-            .replace("§e", "")
-            .replace("§f", "")
+        let mut filtered_s = String::new();
+        let mut iter = s.chars();
+        while let Some(x) = iter.next() {
+            if x == '§' {
+                iter.advance_by(1).unwrap();
+            } else {
+                filtered_s.push(x);
+            }
+        }
+        filtered_s
     }
 
     fn deserialize(mut bytes: Bytes) -> PacketResult {

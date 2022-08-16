@@ -3,10 +3,6 @@
  */
 
 #![feature(iter_advance_by)]
-extern crate bytes;
-extern crate clap;
-extern crate rpassword;
-
 use bytes::{Bytes, BytesMut, Buf, BufMut};
 use clap::{Parser};
 use std::{

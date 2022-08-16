@@ -1,6 +1,3 @@
-extern crate clap;
-extern crate rustcon;
-
 use clap::{Parser};
 use rustcon::{Rcon, Args};
 use std::{io};

@@ -6,7 +6,7 @@
 use bytes::{Bytes, BytesMut, Buf, BufMut};
 use clap::Parser;
 use std::{
-    io::{stdin, stdout, Read, Write, Result as ioResult},
+    io::{self, stdin, stdout, Read, Write},
     fmt,
     net::TcpStream,
     str,
@@ -118,7 +118,6 @@ impl Packet {
                 filtered_s.push(x);
             }
         }
-        return s;
         filtered_s
     }
 
@@ -186,7 +185,7 @@ pub struct Rcon {
     last_sent_id: i32,
 }
 
-/// RCON possible error states
+/// RCON session error
 #[derive(Debug)]
 pub enum RconError {
     PacketError,
@@ -200,19 +199,27 @@ impl Rcon {
     pub fn new(args: &Args) -> RconResult {
         let conn = Rcon::get_conn(&args.ip, &args.port);
         let rcon = Rcon {
-            conn,
+            conn: match conn {
+                Ok(c) => c,
+                Err(_) => return Err(RconError::ConnError),
+            },
             last_sent_id: 0,
         };
 
         Ok(rcon)
     }
 
-    pub fn get_conn(ip: &str, port: &str) -> TcpStream {
-        let conn = TcpStream::connect(format!("{}:{}", ip, port)).expect("Couldn't connect to server at {ip}:{port}");
-        conn.set_nonblocking(false).expect("set_nonblocking call failed");
-        conn.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout call failed");
-        conn.set_write_timeout(Some(Duration::new(1, 0))).expect("set_write_timeout call failed");
-        conn
+    pub fn get_conn(ip: &str, port: &str) -> io::Result<TcpStream> {
+        let conn = TcpStream::connect(format!("{}:{}", ip, port));
+        match conn {
+            Ok(c) => {
+                c.set_nonblocking(false).expect("set_nonblocking call failed");
+                c.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout call failed");
+                c.set_write_timeout(Some(Duration::new(1, 0))).expect("set_write_timeout call failed");
+                Ok(c)
+            },
+            Err(e) => Err(e),
+        }
     }
 
     // Authenticate RCON session with password
@@ -291,7 +298,7 @@ impl Rcon {
         // when all the response packets have been received for a given command
     }
 
-    pub fn run(mut self) -> ioResult<()> {
+    pub fn run(mut self) -> io::Result<()> {
         // Authenticate with RCON password
         while !self.authenticate() {
             println!("Incorrect password. Please try again...");

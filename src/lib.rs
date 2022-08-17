@@ -242,13 +242,6 @@ impl Rcon {
 
     // Authenticate RCON session with password
     pub fn authenticate(&mut self) -> bool {
-        println!("Authenticating...");
-        // Try empty password
-        if self.authenticate_with("".to_string()) { return true; }
-            
-        // Try RUSTCON_PASSWORD env variable
-        if self.authenticate_with(env::var("RUSTCON_PASS").unwrap_or("".to_string())) { return true; }
-
         let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
         self.authenticate_with(pass)
     }
@@ -309,9 +302,14 @@ impl Rcon {
     }
 
     pub fn run(mut self) -> io::Result<()> {
-        // Authenticate with RCON password
-        while !self.authenticate() {
-            println!("Incorrect password. Please try again...");
+        println!("Authenticating...");
+        // Try RUSTCON_PASS env variable but default to empty string
+        if self.authenticate_with(env::var("RUSTCON_PASS").unwrap_or("".to_string())) {}
+        // Try password from user
+        else {
+            while !self.authenticate() {
+                println!("Incorrect password. Please try again...");
+            }
         }
 
         // Interactive prompt

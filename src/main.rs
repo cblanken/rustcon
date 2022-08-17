@@ -7,15 +7,27 @@ fn main() -> io::Result<()> {
     println!("Connecting to host at {}:{} ...", args.ip, args.port);
 
     // Establish connection to RCON server
-    let rcon = Rcon::new(&args);
-    match rcon {
-        Ok(r) => r.run()?,
-        Err(_) => {
-            eprintln!("Unable to create an RCON session with {}:{}", args.ip, args.port);
-            eprintln!("Please confirm the server is running.");
-            exit(1);
-        }
+    loop {
+        match Rcon::new(&args) {
+            Ok(r) => r.run()?,  // start default rcon shell
+            Err(_) => {
+                eprintln!("Unable to create an RCON session to {}:{}", args.ip, args.port);
+                eprintln!("Please confirm the server is running.");
+                let stdin = io::stdin();
+                let mut buffer = String::new();
+                loop {
+                    eprint!("Try again? (y/n): ");
+                    stdin.read_line(&mut buffer)?;
+                    match buffer.trim() {
+                        "y"|"yes"|"Y"|"YES" => {
+                            buffer.clear();
+                            break
+                        },
+                        "n"|"no"|"N"|"NO" => exit(1),
+                        _ => continue,
+                    }
+                }
+            }
+        };
     }
-
-    Ok(())
 }

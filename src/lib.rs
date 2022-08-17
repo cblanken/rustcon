@@ -5,6 +5,7 @@
 use bytes::{Bytes, BytesMut, Buf, BufMut};
 use clap::Parser;
 use std::{
+    env,
     io::{self, stdin, stdout, Read, Write},
     fmt,
     net::TcpStream,
@@ -221,12 +222,9 @@ impl Rcon {
         }
     }
 
-    // Authenticate RCON session with password
-    pub fn authenticate(&mut self) -> bool {
-        let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
+    fn authenticate_with(&mut self, pass: String) -> bool {
         let login = Packet::new(1, PacketType::Login, String::from(&pass));
         if let Ok(packet) = login {
-            println!("Authenticating...");
             self.send_packet(packet);
             let auth_response = self.receive_packets();
             //println!(">>> Received AUTH response:");
@@ -240,6 +238,19 @@ impl Rcon {
             eprintln!("Could not create login Packet with password: '{:?}'", &pass);
             return false
         }
+    }
+
+    // Authenticate RCON session with password
+    pub fn authenticate(&mut self) -> bool {
+        println!("Authenticating...");
+        // Try empty password
+        if self.authenticate_with("".to_string()) { return true; }
+            
+        // Try RUSTCON_PASSWORD env variable
+        if self.authenticate_with(env::var("RUSTCON_PASS").unwrap_or("".to_string())) { return true; }
+
+        let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
+        self.authenticate_with(pass)
     }
 
     fn send_packet(&mut self, packet: Packet) {

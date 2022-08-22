@@ -58,6 +58,7 @@ impl fmt::Display for PacketType {
 
 const MAX_PACKET_SIZE: usize = 4096;
 const MAX_PACKET_BODY_SIZE: usize = MAX_PACKET_SIZE - 12;
+const BAD_AUTH: i32 = -1;
 
 /// RCON packet struct
 pub struct Packet {
@@ -225,17 +226,24 @@ impl Rcon {
     fn authenticate_with(&mut self, pass: String) -> bool {
         let login = Packet::new(1, PacketType::Login, String::from(&pass));
         if let Ok(packet) = login {
-            self.send_packet(packet);
-            let auth_response = self.receive_packets();
-            //println!(">>> Received AUTH response:");
-            for p in &auth_response {
-                if p.id == -1 || p.id != self.last_sent_id {
-                    return false;
-                }
+            if let Err(e) = self.send_packet(packet) {
+                eprintln!("Failed to send login Packet. Error: {:?}", e);
+                return false
             }
-            true
+            if let Ok(auth_response) = self.receive_packets() {
+                // Check all received packets for invalid auth since SRCDS sends multiple packets for auth response
+                for p in &auth_response {
+                    if p.id == BAD_AUTH || p.id != self.last_sent_id {
+                        return false;
+                    }
+                }
+                return true;
+            } else {
+                return false;
+            }
+            //println!(">>> Received AUTH response:");
         } else {
-            eprintln!("Could not create login Packet with password: '{:?}'", &pass);
+            eprintln!("Failed to create login Packet with password: '{:?}'", &pass);
             return false
         }
     }
@@ -246,17 +254,19 @@ impl Rcon {
         self.authenticate_with(pass)
     }
 
-    fn send_packet(&mut self, packet: Packet) {
+    fn send_packet(&mut self, packet: Packet) -> Result<i32, RconError>{
         let mut packet_bytes = packet.serialize();
         
         // Send packet
         //println!("<<< Sending packet: {}", packet);
         //println!("Bytes: {:#x}", packet_bytes);
         self.conn.write(packet_bytes.as_mut()).expect("Cannot write data to stream.");
+
         self.last_sent_id = packet.id;
+        Ok(self.last_sent_id)
     }
 
-    fn receive_packets(&mut self) -> Vec::<Packet> {
+    fn receive_packets(&mut self) -> Result<Vec::<Packet>, RconError> {
         let mut packets: Vec::<Packet> = Vec::new();
         let mut buf = [0; MAX_PACKET_SIZE];
        
@@ -273,26 +283,39 @@ impl Rcon {
 
         // Read all available packets
         while let Ok(_) = self.conn.read(&mut buf) {
+            // Retrieve all packets
             let byte_buf = Bytes::copy_from_slice(&buf);
-            //println!(">>> Received packet:");
+            println!(">>> Received packet:");
             //println!("Bytes: {:?}", byte_buf);
             //println!("First bytes: {:?}", byte_buf.get(0..20));
-            let response = Packet::deserialize(byte_buf).unwrap();
-            if response.body_bytes.len() == 0 || response.id == -1 {
-                packets.push(response);
-                break;
-            } else {
-                packets.push(response);
+            let response = Packet::deserialize(byte_buf);
+            
+            match response {
+                Ok(r) => {
+                    // Handle double auth packet from SRCDS
+                    if r.body_bytes.len() == 0 || r.id == BAD_AUTH {
+                        packets.push(r);
+                        return Ok(packets);
+                    } else {
+                        packets.push(r);
+                    }
+                },
+                Err(PacketError::SmallPacket) => {
+                    return Err(RconError::PacketError)
+                },
+                Err(PacketError::NonAscii) => {
+                    return Err(RconError::PacketError)
+                }
             }
         }
 
-        packets
+        Ok(packets)
     }
 
     /// API function to send RCON commands and receive packets
-    pub fn send_cmd(&mut self, body: &str) -> Vec::<Packet> {
+    pub fn send_cmd(&mut self, body: &str) -> Result<Vec::<Packet>, RconError> {
         let packet = Packet::new(self.last_sent_id + 1, PacketType::Command, body.to_string()).unwrap();
-        self.send_packet(packet);
+        self.send_packet(packet)?;
         self.receive_packets()
         
         // TODO (might be SRCDS specific)
@@ -326,11 +349,18 @@ impl Rcon {
                 continue
             }
 
-            let response = self.send_cmd(&line.trim_end());
-            for p in response {
-                println!("{}", p);
+            if let Ok(response) = self.send_cmd(&line.trim_end()) {
+                for p in response {
+                    println!("{}", p);
+                }
+            } else {
+                eprintln!("Connection lost. Please confirm the server is running and try to reconnect.");
+                break;
             }
+
             println!("{}", "=".repeat(80));
         }
+
+        Ok(())
     }
 }

@@ -285,7 +285,7 @@ impl Rcon {
         while let Ok(_) = self.conn.read(&mut buf) {
             // Retrieve all packets
             let byte_buf = Bytes::copy_from_slice(&buf);
-            println!(">>> Received packet:");
+            //println!(">>> Received packet:");
             //println!("Bytes: {:?}", byte_buf);
             //println!("First bytes: {:?}", byte_buf.get(0..20));
             let response = Packet::deserialize(byte_buf);
@@ -324,7 +324,7 @@ impl Rcon {
         // when all the response packets have been received for a given command
     }
 
-    pub fn run(mut self) -> io::Result<()> {
+    pub fn run(mut self) -> RconResult {
         println!("Authenticating...");
         // Try RUSTCON_PASS env variable but default to empty string
         if self.authenticate_with(env::var("RUSTCON_PASS").unwrap_or("".to_string())) {}
@@ -338,11 +338,21 @@ impl Rcon {
         // Interactive prompt
         println!("{}", "=".repeat(80));
         let stdin = stdin();
+
         loop {
             let mut line = String::new();
+            
+            // Set prompt and read user commands
             print!("λ: ");
-            stdout().flush()?;
-            stdin.read_line(&mut line)?;
+            if let Err(e) = stdout().flush() {
+                eprintln!("{}", e);
+                return Err(RconError::ConnError)
+            }
+            if let Err(e) = stdin.read_line(&mut line) {
+                eprintln!("{}", e);
+                return Err(RconError::ConnError)
+            }
+
             if line.len() > MAX_PACKET_SIZE - 9 {
                 eprintln!("Woah there! That command is waaay too long.");
                 eprintln!("You might want to try that again.");
@@ -354,13 +364,10 @@ impl Rcon {
                     println!("{}", p);
                 }
             } else {
-                eprintln!("Connection lost. Please confirm the server is running and try to reconnect.");
-                break;
+                return Err(RconError::ConnError);
             }
 
             println!("{}", "=".repeat(80));
         }
-
-        Ok(())
     }
 }

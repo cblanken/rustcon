@@ -9,7 +9,14 @@ fn main() -> io::Result<()> {
     // Establish connection to RCON server
     loop {
         match Rcon::new(&args) {
-            Ok(r) => r.run()?,  // start default rcon shell
+            // start default rcon shell
+            Ok(r) => {
+                if let Err(_) = r.run() {
+                    eprintln!("Lost connection to RCON server!");
+                    eprintln!("Attempting to reconnect...");
+                    continue
+                }
+            },
             Err(_) => {
                 eprintln!("Unable to create an RCON session to {}:{}", args.ip, args.port);
                 eprintln!("Please confirm the server is running.");
@@ -24,7 +31,10 @@ fn main() -> io::Result<()> {
                             break
                         },
                         "n"|"no"|"N"|"NO" => exit(1),
-                        _ => continue,
+                        _ => {
+                            buffer.clear();
+                            continue
+                        }
                     }
                 }
             }

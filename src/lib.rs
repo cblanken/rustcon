@@ -147,7 +147,7 @@ impl Packet {
             body_text: {
                 Packet::replace_color_codes(str::from_utf8(&body_bytes)
                     .unwrap_or_else(|_body| {
-                        eprintln!("Could not parse the body bytes as UTF-8");
+                        eprintln!("Could not parse the body as UTF-8");
                         eprintln!("Here are the raw bytes:\n{:#?}", body_bytes);
                         ""
                     })
@@ -246,14 +246,18 @@ impl Rcon {
             }
             //println!(">>> Received AUTH response:");
         } else {
-            eprintln!("Failed to create login Packet with password: '{:?}'", &pass);
+            eprintln!("The password: \"{pass}\" is invalid. RCON only supports ASCII text.");
             return false
         }
     }
 
     // Authenticate RCON session with password
     pub fn authenticate(&mut self) -> bool {
-        let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
+        let pass = rpassword::read_password_from_tty(Some("Password: ")).unwrap_or_else(|_| {
+            eprintln!("RCON passwords can only be ASCII text.");
+            eprintln!("Please try again.");
+            "".to_string()
+        });
         self.authenticate_with(pass)
     }
 
@@ -263,7 +267,10 @@ impl Rcon {
         // Send packet
         //println!("<<< Sending packet: {}", packet);
         //println!("Bytes: {:#x}", packet_bytes);
-        self.conn.write(packet_bytes.as_mut()).expect("Cannot write data to stream.");
+        if let Err(e) = self.conn.write(packet_bytes.as_mut()) {
+            eprintln!("{}", e);
+            return Err(RconError::ConnError)
+        }
 
         self.last_sent_id = packet.id;
         Ok(self.last_sent_id)
@@ -362,11 +369,14 @@ impl Rcon {
                 continue
             }
 
-            if let Ok(response) = self.send_cmd(&line.trim_end()) {
+            let cmd = &line.trim_end();
+            if let Ok(response) = self.send_cmd(cmd) {
                 for p in response {
                     println!("{}", p);
                 }
             } else {
+                eprintln!("Unable to send the command: {cmd}");
+                eprintln!("There may have been a connection error. Please try again.");
                 return Err(RconError::ConnError);
             }
 

@@ -92,7 +92,10 @@ type PacketResult = Result<Packet, PacketError>;
 impl Packet {
     /// Initialize a packet instance with calculated length and included pad byte
     pub fn new(id: i32, typ: PacketType, body_text: String) -> PacketResult {
-        let body_bytes = Bytes::from(body_text.clone());
+        let body_bytes = Bytes::from(body_text
+            .trim_end()
+            .to_string()
+            .clone());
         if !body_bytes.is_ascii() {
             Err(PacketError::NonAscii)
         } else {

@@ -56,9 +56,11 @@ impl fmt::Display for PacketType {
     }
 }
 
-const MIN_PACKET_SIZE: usize = 10;
-const MAX_PACKET_SIZE: usize = 4096;
-const MAX_PACKET_BODY_SIZE: usize = MAX_PACKET_SIZE - 12;
+const PACKET_SIZE_FIELD_LEN: usize = 4;
+const PACKET_SIZE_MIN: usize = 10;
+const PACKET_SIZE_MAX: usize = 4096;
+const PACKET_BODY_MAX_LEN: usize = PACKET_SIZE_MAX - PACKET_SIZE_MIN;
+const PACKET_MAX_BUFFER_LEN: usize = PACKET_SIZE_FIELD_LEN + PACKET_SIZE_MAX;
 const BAD_AUTH: i32 = -1;
 
 /// RCON packet struct
@@ -135,8 +137,8 @@ impl Packet {
         // Copy out bytes from body up to max possible packet size
         let body_size = match size as usize {
             0..=9 => Err(PacketError::SmallPacket)?,
-            10..=MAX_PACKET_SIZE => size as usize - 9,
-            _ => MAX_PACKET_BODY_SIZE,
+            PACKET_SIZE_MIN..=PACKET_SIZE_MAX => size as usize - PACKET_SIZE_MIN,
+            _ => PACKET_BODY_MAX_LEN,
         };
 
         let body_bytes = bytes.copy_to_bytes(body_size);
@@ -178,7 +180,7 @@ impl Packet {
 
     /// Serialize packet into a Vec<u8>
     fn serialize(&self) -> BytesMut {
-        let mut p = BytesMut::with_capacity(MAX_PACKET_SIZE);
+        let mut p = BytesMut::with_capacity(PACKET_SIZE_MAX);
 
         // Construct packet data in bytes
         p.put_i32_le(self.size);
@@ -312,7 +314,7 @@ impl Rcon {
 
     fn receive_packets(&mut self) -> Result<Vec::<Packet>, RconError> {
         let mut packets: Vec::<Packet> = Vec::new();
-        let mut buf = [0; MAX_PACKET_SIZE];
+        let mut vec_buf: Vec<u8> = vec![0; PACKET_MAX_BUFFER_LEN];
        
         // TODO try refactoring with TcpStream.read_to_end()
         // An error shows up when running long commands that return 3+ packets
@@ -326,13 +328,13 @@ impl Rcon {
         //let new_buf = Bytes::copy_from_slice(&vec_buf);
 
         // Read all available packets
-        while let Ok(_) = self.conn.read(&mut buf) {
+        while let Ok(_) = self.conn.read(&mut vec_buf) {
             // Retrieve all packets
-            let byte_buf = Bytes::copy_from_slice(&buf);
+            let mut byte_buf = Bytes::copy_from_slice(&vec_buf);
             //println!(">>> Received packet:");
             //println!("Bytes: {:?}", byte_buf);
             //println!("First bytes: {:?}", byte_buf.get(0..20));
-            let response = Packet::deserialize(byte_buf);
+            let response = Packet::deserialize(&mut byte_buf);
             
             match response {
                 Ok(r) => {
@@ -397,7 +399,7 @@ impl Rcon {
                 return Err(RconError::ConnError)
             }
 
-            if line.len() > MAX_PACKET_SIZE - 9 {
+            if line.len() > PACKET_SIZE_MAX - 9 {
                 eprintln!("Woah there! That command is waaay too long.");
                 eprintln!("You might want to try that again.");
                 continue

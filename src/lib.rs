@@ -126,7 +126,7 @@ impl Packet {
         filtered_s
     }
 
-    fn deserialize(mut bytes: Bytes) -> PacketResult {
+    fn deserialize(bytes: &mut Bytes) -> PacketResult {
         let size = bytes.get_i32_le();
         //println!("packet size: {}", size);
         let id = bytes.get_i32_le();
@@ -158,6 +158,22 @@ impl Packet {
             pad: 0,
         };
         Ok(packet)
+    }
+
+    fn deserialize_all(mut bytes: Bytes) -> Vec<Packet> {
+        let mut packets: Vec::<Packet> = vec![];
+        //let mut remaining_data = data_len;
+        while bytes.remaining() > 0 {
+            println!("remaining: {}", bytes.remaining());
+            println!("DESERIALIZE ALL: new packet!");
+            let packet = Packet::deserialize(&mut bytes);
+            if let Ok(p) = packet {
+                packets.push(p);
+            } else {
+                eprintln!("BAD PACKET in deserialize_all()")
+            }
+        }
+        packets
     }
 
     /// Serialize packet into a Vec<u8>

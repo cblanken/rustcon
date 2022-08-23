@@ -56,6 +56,7 @@ impl fmt::Display for PacketType {
     }
 }
 
+const MIN_PACKET_SIZE: usize = 10;
 const MAX_PACKET_SIZE: usize = 4096;
 const MAX_PACKET_BODY_SIZE: usize = MAX_PACKET_SIZE - 12;
 const BAD_AUTH: i32 = -1;
@@ -187,6 +188,9 @@ pub struct Rcon {
 
     /// Last message ID sent to server
     last_sent_id: i32,
+
+    /// Next message ID to send
+    next_send_id: i32,
 }
 
 /// RCON session error
@@ -208,6 +212,7 @@ impl Rcon {
                 Err(_) => return Err(RconError::ConnError),
             },
             last_sent_id: 0,
+            next_send_id: 1,
         };
 
         Ok(rcon)
@@ -273,7 +278,20 @@ impl Rcon {
         }
 
         self.last_sent_id = packet.id;
+        self.next_send_id = self.last_sent_id + 1;
         Ok(self.last_sent_id)
+    }
+
+    fn send_srcds_packet(&mut self, packet: Packet) -> Result<i32, RconError> {
+        self.send_packet(packet)?;
+        // Send followup SERVERDATA_RESPONSE_VALUE packet
+        let empty_response_packet = Packet::new(
+            self.next_send_id,
+            PacketType::Command,
+            String::new()
+        );
+        let id = self.send_packet(empty_response_packet.unwrap());
+        Ok(id.expect("failed to send SRCDS packet"))
     }
 
     fn receive_packets(&mut self) -> Result<Vec::<Packet>, RconError> {
@@ -324,7 +342,7 @@ impl Rcon {
 
     /// API function to send RCON commands and receive packets
     pub fn send_cmd(&mut self, body: &str) -> Result<Vec::<Packet>, RconError> {
-        let packet = Packet::new(self.last_sent_id + 1, PacketType::Command, body.to_string()).unwrap();
+        let packet = Packet::new(self.next_send_id, PacketType::Command, body.to_string()).unwrap();
         self.send_packet(packet)?;
         self.receive_packets()
         

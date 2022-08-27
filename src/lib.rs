@@ -263,7 +263,12 @@ impl Rcon {
                         return false;
                     }
                 }
+                
+                // Send followup packet, SRCDS doesn't accept the first command after auth
+                self.send_cmd("").unwrap();
+                self.receive_packets().unwrap();
                 return true;
+
             } else {
                 return false;
             }

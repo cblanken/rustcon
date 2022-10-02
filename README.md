@@ -13,14 +13,14 @@ RustCON is an [RCON](https://developer.valvesoftware.com/wiki/Source_RCON_Protoc
   - [ ] Maintain command history
 - [ ] Configs
   - [x] Optionally read password from RCON_PASS env variable
-  - [ ] Optionally provide command info file for autocomplete
+  - [ ] Provide autocomplete
 - [ ] Robust Error Handling
   - [x] Re-ask for password when getting invalid auth response
   - [x] Handle invalid password and command inputs
+  - [x] Automatcially retry lost connection
   - [ ] Signal handling (Ctrl+c) etc.
-  - [ ] Automatcially retry lost connection
 - [ ] TUI
-  - [ ] CLI
+  - [x] CLI
   - [ ] Help menu
     - [ ] Description / more info popup
     - [ ] Autofill

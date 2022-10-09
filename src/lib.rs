@@ -413,6 +413,12 @@ impl Rcon {
             }
 
             let cmd = &line.trim_end();
+            if cmd == &"exit" || cmd == &"quit" {
+                println!("Sending {:?} could cause the server to shut down.", cmd);
+                println!("Type Ctrl+C to close the RCON console");
+                println!("{}", "=".repeat(80));
+                continue
+            }
             if let Ok(response) = self.send_cmd(cmd) {
                 for p in response {
                     println!("{}", p);

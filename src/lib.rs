@@ -272,7 +272,6 @@ impl Rcon {
             } else {
                 return false;
             }
-            //println!(">>> Received AUTH response:");
         } else {
             eprintln!("The password: \"{pass}\" is invalid. RCON only supports ASCII text.");
             return false
@@ -327,10 +326,6 @@ impl Rcon {
         // Pretty sure it's because the TcpStream.read() is completing reads NOT
         // on packet divisions and the "next packet" get's a bad length value when
         // it gets deserialized
-       
-        //let mut vec_buf: Vec::<u8> = Vec::new();
-        //self.conn.read_to_end(&mut vec_buf).unwrap();
-        //let new_buf = Bytes::copy_from_slice(&vec_buf);
 
         // Read all available packets
         while let Ok(_) = self.conn.read(&mut vec_buf) {
@@ -343,8 +338,8 @@ impl Rcon {
             
             match response {
                 Ok(r) => {
-                    // Handle double auth packet from SRCDS
-                    if r.body_bytes.len() == 0 || r.id == BAD_AUTH {
+                    // Handle auth double packet response from SRCDS
+                    if r.id == BAD_AUTH {
                         packets.push(r);
                         return Ok(packets);
                     } else {
@@ -378,9 +373,16 @@ impl Rcon {
     pub fn run(mut self) -> RconResult {
         println!("Authenticating...");
         // Try RUSTCON_PASS env variable but default to empty string
-        if self.authenticate_with(env::var("RUSTCON_PASS").unwrap_or("".to_string())) {}
+        let env_var_is_valid = match env::var("RUSTCON_PASS") {
+            Ok(pass) => self.authenticate_with(pass),
+            Err(e) => {
+                println!("RUSTCON_PASS env variable does not exist");
+                false
+            }
+        };
+
         // Try password from user
-        else {
+        if !env_var_is_valid {
             while !self.authenticate() {
                 println!("Incorrect password. Please try again...");
             }

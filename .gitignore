@@ -4,3 +4,6 @@ target/
 
 # rustfmt backup files
 **/*.rs.bk
+
+.vscode
+Cargo.lock

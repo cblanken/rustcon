@@ -1,7 +1,13 @@
 [package]
 name = "rustcon"
 version = "0.1.0"
+rust-version = "1.65"
 edition = "2018"
+description = "A simple RCON client written in Rust"
+license = "MIT"
+license-file = "LICENSE.md"
+keywords = ["rcon", "RCON"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 array-bytes = { version = "1.5.1" }

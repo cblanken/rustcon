@@ -8,6 +8,9 @@ license = "MIT"
 license-file = "LICENSE.md"
 keywords = ["rcon", "RCON"]
 categories = ["command-line-utilities", "network-programming"]
+homepage = "https://github.com/cblanken/rustcon"
+repository = "https://github.com/cblanken/rustcon"
+readme = "README.md"
 
 [dependencies]
 array-bytes = { version = "1.5.1" }

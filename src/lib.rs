@@ -2,12 +2,11 @@
  * An interactive RCON shell.
  */
 
-use bytes::{Bytes, BytesMut, Buf, BufMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use clap::Parser;
 use std::{
-    env,
+    env, fmt,
     io::{self, stdin, stdout, Read, Write},
-    fmt,
     net::TcpStream,
     str,
     time::Duration,
@@ -28,9 +27,9 @@ pub struct Args {
 
 #[derive(Clone)]
 pub enum PacketType {
-    Login = 3,      // SERVERDATA_AUTH
-    Command = 2,    // SERVERDATA_EXECCOMMAND or SERVERDATA_AUTH_RESPONSE
-    Response = 0,   // SERVERDATA_RESPONSE_VALUE
+    Login = 3,    // SERVERDATA_AUTH
+    Command = 2,  // SERVERDATA_EXECCOMMAND or SERVERDATA_AUTH_RESPONSE
+    Response = 0, // SERVERDATA_RESPONSE_VALUE
     Unknown,
 }
 
@@ -95,10 +94,7 @@ type PacketResult = Result<Packet, PacketError>;
 impl Packet {
     /// Initialize a packet instance with calculated length and included pad byte
     pub fn new(id: i32, typ: PacketType, body_text: String) -> PacketResult {
-        let body_bytes = Bytes::from(body_text
-            .trim_end()
-            .to_string()
-            .clone());
+        let body_bytes = Bytes::from(body_text.trim_end().to_string().clone());
         if !body_bytes.is_ascii() {
             Err(PacketError::NonAscii)
         } else {
@@ -110,7 +106,7 @@ impl Packet {
                 body_bytes: body_bytes,
                 pad: 0,
             };
-            
+
             Ok(packet)
         }
     }
@@ -133,7 +129,7 @@ impl Packet {
         //println!("packet size: {}", size);
         let id = bytes.get_i32_le();
         let typ = PacketType::from(bytes.get_i32_le());
-        
+
         // Copy out bytes from body up to max possible packet size
         let body_size = match size as usize {
             0..=9 => Err(PacketError::SmallPacket)?,
@@ -148,13 +144,15 @@ impl Packet {
             id: id,
             typ: typ,
             body_text: {
-                Packet::replace_color_codes(str::from_utf8(&body_bytes)
-                    .unwrap_or_else(|_body| {
-                        eprintln!("Could not parse the body as UTF-8");
-                        eprintln!("Here are the raw bytes:\n{:#?}", body_bytes);
-                        ""
-                    })
-                    .to_string())
+                Packet::replace_color_codes(
+                    str::from_utf8(&body_bytes)
+                        .unwrap_or_else(|_body| {
+                            eprintln!("Could not parse the body as UTF-8");
+                            eprintln!("Here are the raw bytes:\n{:#?}", body_bytes);
+                            ""
+                        })
+                        .to_string(),
+                )
             },
             body_bytes: body_bytes,
             pad: 0,
@@ -163,7 +161,7 @@ impl Packet {
     }
 
     fn deserialize_all(mut bytes: Bytes) -> Vec<Packet> {
-        let mut packets: Vec::<Packet> = vec![];
+        let mut packets: Vec<Packet> = vec![];
         //let mut remaining_data = data_len;
         while bytes.remaining() > 0 {
             println!("remaining: {}", bytes.remaining());
@@ -187,15 +185,19 @@ impl Packet {
         p.put_i32_le(self.id);
         p.put_i32_le(self.typ.clone() as i32);
         p.put(self.body_bytes.clone());
-        p.put_u8('\0' as u8);   // terminate body with null byte
-        p.put_u8(self.pad);     // append pad null byte
+        p.put_u8('\0' as u8); // terminate body with null byte
+        p.put_u8(self.pad); // append pad null byte
         return p;
     }
 }
 
 impl fmt::Display for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Size: {} bytes, ID: {}, Type: {}\n{}", self.size, self.id, self.typ, self.body_text)
+        write!(
+            f,
+            "Size: {} bytes, ID: {}, Type: {}\n{}",
+            self.size, self.id, self.typ, self.body_text
+        )
     }
 }
 
@@ -240,11 +242,14 @@ impl Rcon {
         let conn = TcpStream::connect(format!("{}:{}", ip, port));
         match conn {
             Ok(c) => {
-                c.set_nonblocking(false).expect("set_nonblocking call failed");
-                c.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout call failed");
-                c.set_write_timeout(Some(Duration::new(1, 0))).expect("set_write_timeout call failed");
+                c.set_nonblocking(false)
+                    .expect("set_nonblocking call failed");
+                c.set_read_timeout(Some(Duration::new(1, 0)))
+                    .expect("set_read_timeout call failed");
+                c.set_write_timeout(Some(Duration::new(1, 0)))
+                    .expect("set_write_timeout call failed");
                 Ok(c)
-            },
+            }
             Err(e) => Err(e),
         }
     }
@@ -254,7 +259,7 @@ impl Rcon {
         if let Ok(packet) = login {
             if let Err(e) = self.send_packet(packet) {
                 eprintln!("Failed to send login Packet. Error: {:?}", e);
-                return false
+                return false;
             }
             if let Ok(auth_response) = self.receive_packets() {
                 // Check all received packets for invalid auth since SRCDS sends multiple packets for auth response
@@ -263,18 +268,17 @@ impl Rcon {
                         return false;
                     }
                 }
-                
+
                 // Send followup packet, SRCDS doesn't accept the first command after auth
                 self.send_cmd("").unwrap();
                 self.receive_packets().unwrap();
                 return true;
-
             } else {
                 return false;
             }
         } else {
             eprintln!("The password: \"{pass}\" is invalid. RCON only supports ASCII text.");
-            return false
+            return false;
         }
     }
 
@@ -288,15 +292,15 @@ impl Rcon {
         self.authenticate_with(pass)
     }
 
-    fn send_packet(&mut self, packet: Packet) -> Result<i32, RconError>{
+    fn send_packet(&mut self, packet: Packet) -> Result<i32, RconError> {
         let mut packet_bytes = packet.serialize();
-        
+
         // Send packet
         //println!("<<< Sending packet: {}", packet);
         //println!("Bytes: {:#x}", packet_bytes);
         if let Err(e) = self.conn.write(packet_bytes.as_mut()) {
             eprintln!("{}", e);
-            return Err(RconError::ConnError)
+            return Err(RconError::ConnError);
         }
 
         self.last_sent_id = packet.id;
@@ -307,19 +311,16 @@ impl Rcon {
     fn send_srcds_packet(&mut self, packet: Packet) -> Result<i32, RconError> {
         self.send_packet(packet)?;
         // Send followup SERVERDATA_RESPONSE_VALUE packet
-        let empty_response_packet = Packet::new(
-            self.next_send_id,
-            PacketType::Command,
-            String::new()
-        );
+        let empty_response_packet =
+            Packet::new(self.next_send_id, PacketType::Command, String::new());
         let id = self.send_packet(empty_response_packet.unwrap());
         Ok(id.expect("failed to send SRCDS packet"))
     }
 
-    fn receive_packets(&mut self) -> Result<Vec::<Packet>, RconError> {
-        let mut packets: Vec::<Packet> = Vec::new();
+    fn receive_packets(&mut self) -> Result<Vec<Packet>, RconError> {
+        let mut packets: Vec<Packet> = Vec::new();
         let mut vec_buf: Vec<u8> = vec![0; PACKET_MAX_BUFFER_LEN];
-       
+
         // TODO try refactoring with TcpStream.read_to_end()
         // An error shows up when running long commands that return 3+ packets
         // which give me weird reads (not filling out buffer or reading too far)
@@ -335,7 +336,7 @@ impl Rcon {
             //println!("Bytes: {:?}", byte_buf);
             //println!("First bytes: {:?}", byte_buf.get(0..20));
             let response = Packet::deserialize(&mut byte_buf);
-            
+
             match response {
                 Ok(r) => {
                     // Handle auth double packet response from SRCDS
@@ -345,13 +346,9 @@ impl Rcon {
                     } else {
                         packets.push(r);
                     }
-                },
-                Err(PacketError::SmallPacket) => {
-                    return Err(RconError::PacketError)
-                },
-                Err(PacketError::NonAscii) => {
-                    return Err(RconError::PacketError)
                 }
+                Err(PacketError::SmallPacket) => return Err(RconError::PacketError),
+                Err(PacketError::NonAscii) => return Err(RconError::PacketError),
             }
         }
 
@@ -359,13 +356,13 @@ impl Rcon {
     }
 
     /// API function to send RCON commands and receive packets
-    pub fn send_cmd(&mut self, body: &str) -> Result<Vec::<Packet>, RconError> {
+    pub fn send_cmd(&mut self, body: &str) -> Result<Vec<Packet>, RconError> {
         let packet = Packet::new(self.next_send_id, PacketType::Command, body.to_string()).unwrap();
         self.send_packet(packet)?;
         self.receive_packets()
-        
+
         // TODO (might be SRCDS specific)
-        // Send follow-up SERVERDATA_RESPONSE_VALUE packet 
+        // Send follow-up SERVERDATA_RESPONSE_VALUE packet
         // This causes the server the server to respond with an empty packet body
         // when all the response packets have been received for a given command
     }
@@ -394,22 +391,22 @@ impl Rcon {
 
         loop {
             let mut line = String::new();
-            
+
             // Set prompt and read user commands
             print!("λ: ");
             if let Err(e) = stdout().flush() {
                 eprintln!("{}", e);
-                return Err(RconError::ConnError)
+                return Err(RconError::ConnError);
             }
             if let Err(e) = stdin.read_line(&mut line) {
                 eprintln!("{}", e);
-                return Err(RconError::ConnError)
+                return Err(RconError::ConnError);
             }
 
             if line.len() > PACKET_SIZE_MAX - 9 {
                 eprintln!("Woah there! That command is waaay too long.");
                 eprintln!("You might want to try that again.");
-                continue
+                continue;
             }
 
             let cmd = &line.trim_end();
@@ -417,7 +414,7 @@ impl Rcon {
                 println!("Sending {:?} could cause the server to shut down.", cmd);
                 println!("Type Ctrl+C to close the RCON console");
                 println!("{}", "=".repeat(80));
-                continue
+                continue;
             }
             if let Ok(response) = self.send_cmd(cmd) {
                 for p in response {

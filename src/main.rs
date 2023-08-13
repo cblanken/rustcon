@@ -1,5 +1,5 @@
 use clap::Parser;
-use rustcon::{Rcon, Args};
+use rustcon::{Args, Rcon};
 use std::{io, process::exit};
 
 fn main() -> io::Result<()> {
@@ -14,11 +14,14 @@ fn main() -> io::Result<()> {
                 if let Err(_) = r.run() {
                     eprintln!("Lost connection to RCON server!");
                     eprintln!("Attempting to reconnect...");
-                    continue
+                    continue;
                 }
-            },
+            }
             Err(_) => {
-                eprintln!("Unable to create an RCON session to {}:{}", args.ip, args.port);
+                eprintln!(
+                    "Unable to create an RCON session to {}:{}",
+                    args.ip, args.port
+                );
                 eprintln!("Please confirm the server is running.");
                 let stdin = io::stdin();
                 let mut buffer = String::new();
@@ -26,14 +29,14 @@ fn main() -> io::Result<()> {
                     eprint!("Try again? (y/n): ");
                     stdin.read_line(&mut buffer)?;
                     match buffer.trim() {
-                        "y"|"yes"|"Y"|"YES" => {
+                        "y" | "yes" | "Y" | "YES" => {
                             buffer.clear();
-                            break
-                        },
-                        "n"|"no"|"N"|"NO" => exit(1),
+                            break;
+                        }
+                        "n" | "no" | "N" | "NO" => exit(1),
                         _ => {
                             buffer.clear();
-                            continue
+                            continue;
                         }
                     }
                 }

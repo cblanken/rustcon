@@ -11,7 +11,19 @@ $ cargo install rustcon
 ```
 
 ## Usage
-TODO: binary usage / argument description
+```shell
+rustcon 0.1.0
+A simple RCON client written in Rust
+
+USAGE:
+    rustcon [OPTIONS]
+
+OPTIONS:
+    -h, --help           Print help information
+    -i, --ip <IP>        RCON server IPv4 address [default: 127.0.0.1]
+    -p, --port <PORT>    RCON server PORT number [default: 27015]
+    -V, --version        Print version information
+```
 
 ## Demo
 TODO: gif demo using client

@@ -100,10 +100,10 @@ impl Packet {
         } else {
             let packet = Packet {
                 size: body_bytes.len() as i32 + 10,
-                id: id,
-                typ: typ,
-                body_text: body_text,
-                body_bytes: body_bytes,
+                id,
+                typ,
+                body_text,
+                body_bytes,
                 pad: 0,
             };
 
@@ -140,9 +140,9 @@ impl Packet {
         let body_bytes = bytes.copy_to_bytes(body_size);
 
         let packet = Packet {
-            size: size,
-            id: id,
-            typ: typ,
+            size,
+            id,
+            typ,
             body_text: {
                 Packet::replace_color_codes(
                     str::from_utf8(&body_bytes)
@@ -372,7 +372,7 @@ impl Rcon {
         // Try RUSTCON_PASS env variable but default to empty string
         let env_var_is_valid = match env::var("RUSTCON_PASS") {
             Ok(pass) => self.authenticate_with(pass),
-            Err(e) => {
+            Err(_) => {
                 println!("RUSTCON_PASS env variable does not exist");
                 false
             }

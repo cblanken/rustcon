@@ -9,9 +9,9 @@ fn main() -> io::Result<()> {
     // Establish connection to RCON server
     loop {
         match Rcon::new(&args) {
-            // start default rcon shell
+            // Start default rcon shell
             Ok(r) => {
-                if let Err(_) = r.run() {
+                if let Err(_) = r.shell() {
                     eprintln!("Lost connection to RCON server!");
                     eprintln!("Attempting to reconnect...");
                     continue;

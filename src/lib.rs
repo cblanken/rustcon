@@ -25,11 +25,18 @@ pub struct Args {
     pub port: String,
 }
 
+/// Definition for
+///
+/// Source: [https://developer.valvesoftware.com/wiki/Source_RCON_Protocol#Packet_Type](https://developer.valvesoftware.com/wiki/Source_RCON_Protocol#Packet_Type)
 #[derive(Clone)]
 pub enum PacketType {
-    Login = 3,    // SERVERDATA_AUTH
-    Command = 2,  // SERVERDATA_EXECCOMMAND or SERVERDATA_AUTH_RESPONSE
-    Response = 0, // SERVERDATA_RESPONSE_VALUE
+    /// `SERVERDATA_AUTH`
+    Login = 3,
+    /// `SERVERDATA_EXECCOMMAND` or `SERVERDATA_AUTH_RESPONSE`
+    Command = 2,
+    /// `SERVERDATA_RESPONSE_VALUE`
+    Response = 0,
+    /// A packet type that doesn't follow the RCON specification
     Unknown,
 }
 
@@ -62,7 +69,9 @@ const PACKET_BODY_MAX_LEN: usize = PACKET_SIZE_MAX - PACKET_SIZE_MIN;
 const PACKET_MAX_BUFFER_LEN: usize = PACKET_SIZE_FIELD_LEN + PACKET_SIZE_MAX;
 const BAD_AUTH: i32 = -1;
 
-/// RCON packet struct
+/// RCON packet structure
+///
+/// Source: [https://developer.valvesoftware.com/wiki/Source_RCON_Protocol#Basic_Packet_Structure](https://developer.valvesoftware.com/wiki/Source_RCON_Protocol#Basic_Packet_Structure)
 pub struct Packet {
     /// Length of remainder of packet, max of 4096 for a single packet
     size: i32,
@@ -92,7 +101,7 @@ pub enum PacketError {
 type PacketResult = Result<Packet, PacketError>;
 
 impl Packet {
-    /// Initialize a packet instance with calculated length and included pad byte
+    /// Initialize a packet instance with calculated length and a pad byte
     pub fn new(id: i32, typ: PacketType, body_text: String) -> PacketResult {
         let body_bytes = Bytes::from(body_text.trim_end().to_string().clone());
         if !body_bytes.is_ascii() {
@@ -100,10 +109,10 @@ impl Packet {
         } else {
             let packet = Packet {
                 size: body_bytes.len() as i32 + 10,
-                id: id,
-                typ: typ,
-                body_text: body_text,
-                body_bytes: body_bytes,
+                id,
+                typ,
+                body_text,
+                body_bytes,
                 pad: 0,
             };
 
@@ -112,21 +121,20 @@ impl Packet {
     }
 
     fn replace_color_codes(s: String) -> String {
-        let mut filtered_s = String::new();
+        let mut filtered = String::new();
         let mut iter = s.chars();
         while let Some(ch) = iter.next() {
             if ch == '§' {
                 iter.next();
             } else {
-                filtered_s.push(ch);
+                filtered.push(ch);
             }
         }
-        filtered_s
+        filtered
     }
 
     fn deserialize(bytes: &mut Bytes) -> PacketResult {
         let size = bytes.get_i32_le();
-        //println!("packet size: {}", size);
         let id = bytes.get_i32_le();
         let typ = PacketType::from(bytes.get_i32_le());
 
@@ -140,9 +148,9 @@ impl Packet {
         let body_bytes = bytes.copy_to_bytes(body_size);
 
         let packet = Packet {
-            size: size,
-            id: id,
-            typ: typ,
+            size,
+            id,
+            typ,
             body_text: {
                 Packet::replace_color_codes(
                     str::from_utf8(&body_bytes)
@@ -154,26 +162,10 @@ impl Packet {
                         .to_string(),
                 )
             },
-            body_bytes: body_bytes,
+            body_bytes,
             pad: 0,
         };
         Ok(packet)
-    }
-
-    fn deserialize_all(mut bytes: Bytes) -> Vec<Packet> {
-        let mut packets: Vec<Packet> = vec![];
-        //let mut remaining_data = data_len;
-        while bytes.remaining() > 0 {
-            println!("remaining: {}", bytes.remaining());
-            println!("DESERIALIZE ALL: new packet!");
-            let packet = Packet::deserialize(&mut bytes);
-            if let Ok(p) = packet {
-                packets.push(p);
-            } else {
-                eprintln!("BAD PACKET in deserialize_all()")
-            }
-        }
-        packets
     }
 
     /// Serialize packet into a Vec<u8>
@@ -296,8 +288,6 @@ impl Rcon {
         let mut packet_bytes = packet.serialize();
 
         // Send packet
-        //println!("<<< Sending packet: {}", packet);
-        //println!("Bytes: {:#x}", packet_bytes);
         if let Err(e) = self.conn.write(packet_bytes.as_mut()) {
             eprintln!("{}", e);
             return Err(RconError::ConnError);
@@ -306,15 +296,6 @@ impl Rcon {
         self.last_sent_id = packet.id;
         self.next_send_id = self.last_sent_id + 1;
         Ok(self.last_sent_id)
-    }
-
-    fn send_srcds_packet(&mut self, packet: Packet) -> Result<i32, RconError> {
-        self.send_packet(packet)?;
-        // Send followup SERVERDATA_RESPONSE_VALUE packet
-        let empty_response_packet =
-            Packet::new(self.next_send_id, PacketType::Command, String::new());
-        let id = self.send_packet(empty_response_packet.unwrap());
-        Ok(id.expect("failed to send SRCDS packet"))
     }
 
     fn receive_packets(&mut self) -> Result<Vec<Packet>, RconError> {
@@ -332,9 +313,6 @@ impl Rcon {
         while let Ok(_) = self.conn.read(&mut vec_buf) {
             // Retrieve all packets
             let mut byte_buf = Bytes::copy_from_slice(&vec_buf);
-            //println!(">>> Received packet:");
-            //println!("Bytes: {:?}", byte_buf);
-            //println!("First bytes: {:?}", byte_buf.get(0..20));
             let response = Packet::deserialize(&mut byte_buf);
 
             match response {
@@ -355,7 +333,7 @@ impl Rcon {
         Ok(packets)
     }
 
-    /// API function to send RCON commands and receive packets
+    /// Send an RCON command and receive response packets
     pub fn send_cmd(&mut self, body: &str) -> Result<Vec<Packet>, RconError> {
         let packet = Packet::new(self.next_send_id, PacketType::Command, body.to_string()).unwrap();
         self.send_packet(packet)?;
@@ -367,12 +345,13 @@ impl Rcon {
         // when all the response packets have been received for a given command
     }
 
-    pub fn run(mut self) -> RconResult {
+    /// Launch interactive shell to send RCON commands and receive responses
+    pub fn shell(mut self) -> RconResult {
         println!("Authenticating...");
-        // Try RUSTCON_PASS env variable but default to empty string
+        // Try RUSTCON_PASS env variable
         let env_var_is_valid = match env::var("RUSTCON_PASS") {
             Ok(pass) => self.authenticate_with(pass),
-            Err(e) => {
+            Err(_) => {
                 println!("RUSTCON_PASS env variable does not exist");
                 false
             }

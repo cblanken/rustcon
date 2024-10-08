@@ -26,7 +26,7 @@ OPTIONS:
 ```
 
 ## Demo
-TODO: gif demo using client
+<a href="https://asciinema.org/a/lLmhAWmNQuXpPFXqkGeVpt2xa" target="_blank"><img src="https://asciinema.org/a/lLmhAWmNQuXpPFXqkGeVpt2xa.svg" /></a>
 
 ## License
 All files MIT © Cameron Blankenkenbuehler per the [license](./LICENSE.md).

@@ -1,4 +1,10 @@
-# RustCON
+# RustCON 
+
+> [!IMPORTANT]  
+RustCONhas moved to [Codeberg](https://codeberg.org/about). Follow all future development at [https://codeberg.org/cblanken/rcon](https://codeberg.org/cblanken/rustcon).
+
+----
+
 ![rust-logo](https://img.shields.io/badge/Rust-2018-red?logo=rust)
 ![license](https://img.shields.io/github/license/cblanken/rustcon?label=License)
 

@@ -1,7 +1,7 @@
 # RustCON 
 
 > [!IMPORTANT]  
-RustCONhas moved to [Codeberg](https://codeberg.org/about). Follow all future development at [https://codeberg.org/cblanken/rcon](https://codeberg.org/cblanken/rustcon).
+RustCON has moved to [Codeberg](https://codeberg.org/about). Follow all future development at [https://codeberg.org/cblanken/rcon](https://codeberg.org/cblanken/rustcon).
 
 ----
 
